@@ -255,7 +255,7 @@ def get_patterns(xmlfile='output.xml'):
 		#with open('results\\' + filename + '_patt_pairwised.txt', 'w+') as f1:
 		#	f1.write(out)
 		# Create the input for CRF++
-		crf_input(episode_dict_reduced, ''.join(episode_sequence))
+		# crf_input(episode_dict_reduced, ''.join(episode_sequence))
 		
 	count = 0  # number of patterns
 	out_all = ''
@@ -279,7 +279,10 @@ def get_patterns(xmlfile='output.xml'):
 	for tl in sorted(timeline_rules):
 		out_tl += '\n' + tl + '\n=====================\n'
 		episodes = timeline_rules[tl]
-		for epis_seq in sorted(episodes):
+		epis_sequence = tl.split('&#8594;')
+		# sort by the episode sequence
+		ep_layout_list = [epis_sequence[i] + ' &#8594; ' + epis_sequence[i+1] for i in range(len(epis_sequence)-1)]
+		for epis_seq in sorted(episodes, key=lambda pair: ep_layout_list.index(pair)):
 			out_tl += '\n' + epis_seq + "\n=============\n"
 			gener_patterns = episodes[epis_seq]
 			for gener_patt in sorted(gener_patterns, key=lambda gener_patt: sum(value[0] for value in gener_patterns[gener_patt].values()), reverse=True):  # sorted by frequency
@@ -403,7 +406,10 @@ def create_cond_prob_data_structure():
 	for sequence in sorted(timeline_rules):
 		trans_count = 0
 		trie = []
-		for transition in sorted(timeline_rules[sequence]):
+		# sort by the episode sequence
+		epis_sequence = sequence.split('&#8594;')
+		ep_layout_list = [epis_sequence[i] + ' &#8594; ' + epis_sequence[i+1] for i in range(len(epis_sequence)-1)]
+		for transition in sorted(timeline_rules[sequence], key=lambda pair: ep_layout_list.index(pair)):
 			trans_count += 1
 			number_of_stories = 0
 			condit_prob = {}
@@ -438,7 +444,7 @@ def create_cond_prob_data_structure():
 			trie += [condit_prob]
 
 		cond_prob_all_timelines[sequence.replace("&#8594;", ">>>")] = trie
-	print(cond_prob_all_timelines['2>>>3>>>4>>>5>>>1>>>6'])
+	# print(cond_prob_all_timelines['2>>>3>>>4>>>5>>>1>>>6'])
 	return cond_prob_all_timelines
 
 
@@ -467,7 +473,7 @@ def calculate_paths(probs, episode, tense, path, input):
 					res[path + "||" + tense_cases] = round(input[path] * prob_dict[tense_cases], 7)
 					path2 = path + "||" + tense_cases
 					tense = tense_cases
-					episode = len(path.split("||"))
+					episode = len(path2.split("||"))
 					res.update(calculate_paths(probs, episode, tense, path2, res))
 			# recursion is finished with the last episode
 			else:
@@ -516,8 +522,8 @@ def crf_input(episode_d_red, timeline):
 				tense_adv_l.append('TIMEX')
 			else:
 				tense_adv_l = [tense for tense in tense_adv.split('_')]
-			if tense_adv_l[0] == 'TIMEX':
-				print(tense_adv)
+			'''if tense_adv_l[0] == 'TIMEX':
+				print(tense_adv)'''
 			out += episode + '\t' + '_'.join(tense_adv_l) + '\n'
 		out += '\n'
 	f_crf.write(out)
@@ -530,14 +536,17 @@ def html_out(tl_rules, out_tl):
 	for tl in sorted(tl_rules):
 		out_tl += '<h2>Timeline: ' + tl + '</h2>\n'
 		episodes = tl_rules[tl]
-		out_tl, ex_count = html_episodes(episodes, out_tl, ex_count)
+		out_tl, ex_count = html_episodes(episodes, out_tl, tl, ex_count)
 
 	f_all = open('timeline_patterns.html', 'w+')
 	f_all.write(out_tl)
 
 
-def html_episodes(patt_dict, out_tl, ex_count=0):
-	for epis_seq in sorted(patt_dict):
+def html_episodes(patt_dict, out_tl, timeline, ex_count=0):
+	# uncomment this for the html_out function
+	# epis_sequence = timeline.split('&#8594;')
+	# ep_layout_list = [epis_sequence[i] + ' &#8594; ' + epis_sequence[i+1] for i in range(len(epis_sequence)-1)]
+	for epis_seq in sorted(patt_dict):  # key=lambda pair: ep_layout_list.index(pair)
 		out_tl += '\n<h3>Episode transition: ' + epis_seq + '</h3><ol type="I">\n'
 		gener_patterns = patt_dict[epis_seq]
 		for gener_patt in sorted(gener_patterns, key=lambda gener_patt: sum(value[0] for value in gener_patterns[gener_patt].values()), reverse=True):  # sorted by frequency
@@ -577,7 +586,7 @@ with open('head_html.txt', 'r') as f_head:
 
 # patt_dict_overall, timeline_rules = get_patterns(xml_file)
 # html_out(timeline_rules, html_head)
-# html_episodes(patt_dict_overall, html_head)
+# html_episodes(patt_dict_overall, html_head, timeline='')
 
 print("No key events: {}".format(no_intersect))
 print("One key events: {}".format(unique_key))
