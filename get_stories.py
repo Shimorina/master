@@ -101,6 +101,7 @@ def add_episodes(orig_xmlfile):
 
 
 def get_patterns(xmlfile='output.xml'):
+	etree.register_namespace("", "http://chambers.com/corpusinfo")
 	tree = etree.parse(xmlfile)
 	root = tree.getroot()
 	patt_dict_overall = {}
@@ -189,13 +190,15 @@ def get_patterns(xmlfile='output.xml'):
 				# write to file identified patterns in each sentence
 				output += episode_number + " " + pattern + '\n' + text_pattern + '\n' + sentence + '\n\n'
 				episode_dict.setdefault(episode_number, []).append([pattern, text_pattern, sentence, generalised_patt])
-
+		
+		key_event_numbers = {} # store all key_event_numbers for each episode
 		# reducing sentences in the episode to one (e.g. identifying the key event in the episode)
-		for key in episode_dict:
+		for key in sorted(episode_dict):
 			sentences = episode_dict[key]
 			if len(sentences) == 1:  # if there's only one sentence in the episode, it's the key event
 				count_1sent += 1
 				episode_dict_reduced[key] = sentences[0]
+				key_event_numbers[key] = 0
 				if sentences[0][0] == "Not available Not available ":
 					count_NANA += 1
 			else:
@@ -204,8 +207,30 @@ def get_patterns(xmlfile='output.xml'):
 				episode_dict_reduced[key] = sentences[key_event_number]
 				if sentences[key_event_number][0] == "Not available Not available ":
 					count_NANA += 1
+				key_event_numbers[key] = key_event_number
+		
+
+		# generate file with key event tags
+		'''index = 0
+		ep_n_new = filename[-11]  # which episode the story begins with
+		for entry in file:
+			if entry.tag == "{http://chambers.com/corpusinfo}entry":
+				ep_n_old = entry[6].attrib['number']
+				if ep_n_old == ep_n_new:
+					if index == key_event_numbers[ep_n_old]:
+						etree.SubElement(entry, '{http://chambers.com/corpusinfo}keyevent')
+					index += 1
+					ep_n_new = entry[6].attrib['number']
+				else:
+					index = 0
+					if index == key_event_numbers[ep_n_old]:
+						etree.SubElement(entry, '{http://chambers.com/corpusinfo}keyevent')
+					index += 1
+					ep_n_new = entry[6].attrib['number']'''
 		# print(episode_dict)
 		# print(episode_dict_reduced)
+		
+		gener_stats(episode_dict_reduced, filename)
 		
 		#with open('results\\' + filename + '_patt_per_sentence.txt', 'w+') as f:
 		#	f.write(output)
@@ -255,7 +280,7 @@ def get_patterns(xmlfile='output.xml'):
 		#with open('results\\' + filename + '_patt_pairwised.txt', 'w+') as f1:
 		#	f1.write(out)
 		# Create the input for CRF++
-		# crf_input(episode_dict_reduced, ''.join(episode_sequence))
+		crf_input(episode_dict_reduced, ''.join(episode_sequence))
 		
 	count = 0  # number of patterns
 	out_all = ''
@@ -297,6 +322,8 @@ def get_patterns(xmlfile='output.xml'):
 
 	with open('timeline_patterns.txt', 'w+') as f_all:
 		f_all.write(out_tl)
+		
+	# tree.write('output_keyevent.xml')
 
 	print("Patterns: " + str(count))
 	print("Episodes with > 1 sent: " + str(count_ep))
@@ -304,6 +331,21 @@ def get_patterns(xmlfile='output.xml'):
 	print("Key events with NA_NA: {}".format(count_NANA))
 	return patt_dict_overall, timeline_rules
 
+	
+stat_patterns = {}
+
+
+def gener_stats(episode_dict_reduced, filename):
+	global stat_patterns
+	for epis in episode_dict_reduced:
+		# print(filename)
+		pattern = episode_dict_reduced[epis][0]
+		if pattern in stat_patterns:
+			stat_patterns[pattern] += 1
+		else:
+			stat_patterns[pattern] = 1
+	# print(stat_patterns)
+					
 	
 def get_captions():
 	"""Read captions from file, store them in the dictionary with the story number as a key."""
@@ -323,6 +365,7 @@ mult_key = 0
 first_sent = 0
 stemmer = PorterStemmer()
 
+f_keyev_test = open('keyevent_test.txt', 'w+')
 
 def identify_key_event(story, episode, ep_sentences):
 	"""Return the sequence number of the key event in the episode.
@@ -363,11 +406,12 @@ def identify_key_event(story, episode, ep_sentences):
 		no_intersect += 1
 		# return the first sentence of the episode
 		ep_number = 0
+		legend = 'no_intersection'
 	elif count == 1:
 		unique_key += 1
 		# only one key event found, return it
 		ep_number = list(sent_intersect.keys())[0]
-		
+		legend = 'one_choice'
 		# check if the key event belongs to the 1st sentence of the episode
 		if ep_number == 0:
 			first_sent += 1
@@ -379,6 +423,18 @@ def identify_key_event(story, episode, ep_sentences):
 		for key, value in sent_intersect.items():
 			sent_intersect[key] = len(value)
 		ep_number = max(sent_intersect, key=lambda k: (sent_intersect[k]))
+		legend = 'mult_choice'
+	#write sentences to file for testing
+	'''out_key = ''
+	for index, sentence in enumerate(ep_sentences):
+		if index == ep_number:
+			out_key += story +' ' + caption + '\t' + episode + '\t' + sentence[2] + '\t' + legend + '\t1\n'
+		else:
+			out_key += story +' ' + caption + '\t' + episode + '\t' + sentence[2] + '\t' + legend + '\t0\n'
+	out_key += '\n'
+		
+	f_keyev_test.write(out_key)'''
+	
 	return ep_number
 	
 
@@ -502,13 +558,13 @@ def get_all_paths():
 			f_out.write("\n\n")
 
 
-f_crf = open('crf_data\\train_123456_adv_gener_withoutorder.txt', 'w+')
-
+f_crf = open('crf_data\\train_651234_adv_gener_withoutorder.txt', 'w+')
 
 def crf_input(episode_d_red, timeline):
 	global f_crf
+	global stat_patterns
 	out = ''
-	if timeline == '123456':
+	if timeline == '651234':
 		for episode in timeline:
 			tense_adv_l = []
 			tense_adv = episode_d_red[episode][0].rstrip().replace('  ', ' ')
@@ -577,14 +633,15 @@ original_xml_file = 'narrative_corpus_story_per_file-dir.info.xml'
 # get_stories()
 # add_episodes(original_xml_file)
 # get_patterns(xml_file)
-get_all_paths()
+# get_all_paths()
 
 """Generate html files."""
 # add the head of the html-file
 with open('head_html.txt', 'r') as f_head:
 	html_head = ''.join(f_head)
 
-# patt_dict_overall, timeline_rules = get_patterns(xml_file)
+patt_dict_overall, timeline_rules = get_patterns(xml_file)
+
 # html_out(timeline_rules, html_head)
 # html_episodes(patt_dict_overall, html_head, timeline='')
 
@@ -593,3 +650,10 @@ print("One key events: {}".format(unique_key))
 print("Multiple key events: {}".format(mult_key))
 print("Key event is equal to the 1st sent in the episodes where one key event was detected: {}".format(first_sent))
 f_crf.close()
+f_keyev_test.close()
+
+'''with open('stat.txt', 'w+') as f_stat:
+	for key in sorted(stat_patterns, key=stat_patterns.get, reverse=True):
+		f_stat.write(key + ' ' + str(stat_patterns[key]) + '\n')
+
+print(sum(stat_patterns.values()))'''
